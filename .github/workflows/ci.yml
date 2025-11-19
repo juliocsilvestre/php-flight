@@ -1,0 +1,112 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  laravel-tests:
+    name: Laravel Tests (PHP ${{ matrix.php-versions }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        php-versions: ["8.2", "8.3"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-versions }}
+          extensions: mbstring, pdo, pdo_sqlite, bcmath
+          coverage: xdebug
+
+      - name: Copy .env
+        run: cp .env.example .env
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-suggest
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Create SQLite database
+        run: touch database/database.sqlite
+
+      - name: Run migrations
+        run: php artisan migrate --force
+
+      - name: Run PHPUnit tests
+        run: vendor/bin/phpunit --coverage-text
+
+      - name: Run Laravel Pint
+        run: vendor/bin/pint --test
+
+  vue-tests:
+    name: Vue.js Tests (Node ${{ matrix.node-versions }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-versions: ["18", "20"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-versions }}
+
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Run Vitest
+        run: npm run test
+
+      - name: Build assets
+        run: npm run build
+
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t flight3d-vision:test .
+
+      - name: Test Docker Compose
+        run: |
+          cp .env.example .env
+          docker-compose up -d
+          sleep 30
+          docker-compose ps
+          docker-compose down
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run Laravel Pint (code style)
+        run: vendor/bin/pint --test
